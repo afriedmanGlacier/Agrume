@@ -20,6 +20,7 @@ public final class Agrume: UIViewController {
   
   private var overlayView: AgrumeOverlayView?
   private weak var dataSource: AgrumeDataSource?
+  @objc private var saveableImage: UIImage?
 
   /// The background property. Set through the initialiser for most use cases.
   public var background: Background
@@ -30,7 +31,7 @@ public final class Agrume: UIViewController {
   public typealias DownloadCompletion = (_ image: UIImage?) -> Void
 
   /// Optional closure to call when user long pressed on an image
-  public var onLongPress: ((UIImage?, UIViewController) -> Void)?
+  public var onLongPress: ((UIImage?, UIGestureRecognizer) -> Void)?
   /// Optional closure to call whenever Agrume is about to dismiss.
   public var willDismiss: (() -> Void)?
   /// Optional closure to call whenever Agrume is dismissed.
@@ -152,6 +153,90 @@ public final class Agrume: UIViewController {
   required public init?(coder aDecoder: NSCoder) {
     fatalError("Not implemented")
   }
+    
+    public override var canBecomeFirstResponder: Bool{
+        get{
+            return true
+        }
+    }
+    
+    public override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        guard let image = self.images.first?.image else{
+            return false
+        }
+        
+        if let imgdata = image.imageData {
+            let imgFormat = imgdata.imageFormat
+            if imgFormat == .gif {
+                return false
+            }
+        }
+        
+        if (action == #selector(saveImage)) {
+            return true
+        }
+        if (action == #selector(copyImage)) {
+            return true;
+        }
+        return false
+    }
+    
+    @objc func copyImage() {
+        let alert = UIAlertController(title: "Copy to Clipboard?", message: "Copying this image to your device will allow any other apps on your device to access it.", preferredStyle: .alert)
+    
+        alert.addAction(UIAlertAction(title: "Copy", style: .default) { _ in
+            UIPasteboard.general.image = self.saveableImage
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel, handler: nil))
+    
+        self.present(alert, animated: true)
+    }
+    
+    @objc func saveImage() {
+        
+        guard let image = self.saveableImage else {
+            return
+        }
+        
+        //for security/privacy, warn user and verify when saving image to device
+        let alert = UIAlertController(title: "Save to Storage?", message: "Saving this image to your device will allow any other apps on your device to access it.", preferredStyle: .alert)
+    
+        alert.addAction(UIAlertAction(title: "Save", style: .default) { _ in
+            UIImageWriteToSavedPhotosAlbum(image, self, nil, nil)
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel, handler: nil))
+    
+        self.present(alert, animated: true)
+    }
+    
+    /// Save the current photo shown in the user's photo library using Long Press Gesture
+    /// Make sure to have NSPhotoLibraryUsageDescription (ios 10) and NSPhotoLibraryAddUsageDescription (ios 11+) in your info.plist
+    public func makeSaveToLibraryLongPressGesture(for image: UIImage?, sender: UIGestureRecognizer) {
+        guard let image = self.images.first?.image else {
+            return
+        }
+        
+        self.saveableImage = image
+        let view = self.view!
+      
+        if (sender.state == UIGestureRecognizer.State.began) {
+            //let location = sender.location(in: view)
+            self.becomeFirstResponder()
+            let menu = UIMenuController.shared
+            
+            let saveImg = UIMenuItem.init(title: "Save", action: #selector(saveImage))
+            let copyImg = UIMenuItem.init(title: "Copy", action: #selector(copyImage))
+            menu.menuItems = [copyImg, saveImg]
+            
+            menu.update()
+            menu.showMenu(from: view, rect: view.bounds)
+        }
+    }
+    
+    @objc
+    private func image(_ image: UIImage, didFinishSavingWithError error: NSError?, contextInfo: UnsafeRawPointer) {
+      //saveToLibraryHandler(error)
+    }
 
   private var _blurContainerView: UIView?
   private var blurContainerView: UIView {
@@ -305,7 +390,7 @@ public final class Agrume: UIViewController {
       guard let self = self else {
         return
       }
-      self.onLongPress?(image, self)
+      self.onLongPress?(image, gesture)
     }
   }
 
@@ -606,4 +691,44 @@ extension Agrume: AgrumeCloseButtonOverlayViewDelegate {
     dismiss()
   }
 
+}
+
+public enum ImageFormat: RawRepresentable {
+  case unknown, png, jpeg, gif, tiff1, tiff2
+  
+  public init?(rawValue: [UInt8]) {
+    switch rawValue {
+    case [0x89]: self = .png
+    case [0xFF]: self = .jpeg
+    case [0x47]: self = .gif
+    case [0x49]: self = .tiff1
+    case [0x4D]: self = .tiff2
+    default: return nil
+    }
+  }
+  
+  public var rawValue: [UInt8] {
+    switch self {
+    case .png: return [0x89]
+    case .jpeg: return [0xFF]
+    case .gif: return [0x47]
+    case .tiff1: return [0x49]
+    case .tiff2: return [0x4D]
+    case .unknown: return []
+    }
+  }
+}
+
+public extension NSData {
+  var imageFormat: ImageFormat {
+    var buffer = [UInt8](repeating: 0, count: 1)
+    self.getBytes(&buffer, range: NSRange(location: 0,length: 1))
+    return ImageFormat(rawValue: buffer) ?? .unknown
+  }
+}
+
+public extension Data {
+  var imageFormat: ImageFormat {
+    (self as NSData?)?.imageFormat ?? .unknown
+  }
 }
