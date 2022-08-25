@@ -1,7 +1,6 @@
 //
 //  Copyright © 2020 Schnaub. All rights reserved.
 //
-
 import UIKit
 
 public final class AgrumePhotoLibraryHelper: NSObject {

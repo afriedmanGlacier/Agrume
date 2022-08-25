@@ -154,6 +154,7 @@ public final class Agrume: UIViewController {
     fatalError("Not implemented")
   }
     
+    //IOSM#61
     public override var canBecomeFirstResponder: Bool{
         get{
             return true
@@ -693,6 +694,7 @@ extension Agrume: AgrumeCloseButtonOverlayViewDelegate {
 
 }
 
+//IOSM#61
 public enum ImageFormat: RawRepresentable {
   case unknown, png, jpeg, gif, tiff1, tiff2
   
